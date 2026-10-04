@@ -1,3 +1,5 @@
+import { DownloadBrowser, type BrowserCapture } from "./download-browser.js";
+import type { FileRequest } from "../utils/nxm.js";
 import { assertQuery } from "../utils/graphql.js";
 import { siteUrl } from "../utils/helpers.js";
 // Copyright (c) 2026 Morgott
@@ -63,6 +65,7 @@ export function memberIdFromGid(id: unknown): number | null {
 
 export class WebClient {
   private cookies: CookieEntry[] = [];
+  private downloadBrowser: DownloadBrowser | null = null;
   private browser = new BrowserClient();
   private loginPolling = false;
   /** Bumped by logout: a running sign-in poll with an older value stops. */
@@ -182,6 +185,8 @@ export class WebClient {
     this.meta = { source: null, browser: null, signedOut: true };
     this.saveMeta();
     await this.browser.clearSiteCookies();
+    await this.downloadBrowser?.clearSiteCookies();
+    await this.downloadBrowser?.close();
     await this.browser.close(); // closes the sign-in window too
     return { loggedOut: true, cookiesStored: false };
   }
@@ -549,7 +554,16 @@ export class WebClient {
     return json.data as T;
   }
 
+  async captureDownload(request: FileRequest): Promise<BrowserCapture> {
+    this.downloadBrowser ??= new DownloadBrowser({humanTimeoutMs:Number(process.env.NEXUS_HUMAN_TIMEOUT_MS || 300_000), cdnHosts:(process.env.NEXUS_CDN_HOSTS || "nexusmods.com,nexus-cdn.com").split(",").map(host => host.trim())});
+    if (this.meta.signedOut) await this.downloadBrowser.clearSiteCookies();
+    this.downloadBrowser.setCookies(this.cookies);
+    return this.downloadBrowser.captureDownload(request);
+  }
+
   async close(): Promise<void> {
+    await this.downloadBrowser?.close();
+    this.downloadBrowser = null;
     await this.browser.close();
   }
 }
