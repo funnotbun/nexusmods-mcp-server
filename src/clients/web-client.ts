@@ -63,6 +63,7 @@ export function memberIdFromGid(id: unknown): number | null {
 
 export class WebClient {
   private cookies: CookieEntry[] = [];
+  private startupExtraction: Promise<void> | null = null;
   private downloadBrowser: DownloadBrowser | null = null;
   private browser = new BrowserClient();
   private loginPolling = false;
@@ -103,7 +104,7 @@ export class WebClient {
   init(): void {
     this.browser.setCookies(this.cookies);
     if (this.meta.signedOut) this.browser.markClearOnLaunch();
-    else if (!this.hasCookies()) void this.backgroundExtract();
+    else if (!this.hasCookies()) this.startupExtraction ??= this.backgroundExtract();
   }
 
   hasCookies(): boolean {
@@ -547,9 +548,10 @@ export class WebClient {
   }
 
   async captureDownload(request: FileRequest): Promise<BrowserCapture> {
+    if (!this.hasCookies() && !this.meta.signedOut) await this.startupExtraction;
     this.downloadBrowser ??= new DownloadBrowser({humanTimeoutMs:Number(process.env.NEXUS_HUMAN_TIMEOUT_MS || 300_000), cdnHosts:(process.env.NEXUS_CDN_HOSTS || "nexusmods.com,nexus-cdn.com").split(",").map(host => host.trim())});
     if (this.meta.signedOut) await this.downloadBrowser.clearSiteCookies();
-    this.downloadBrowser.setCookies(this.cookies);
+    await this.downloadBrowser.setCookies(this.cookies);
     return this.downloadBrowser.captureDownload(request);
   }
 
