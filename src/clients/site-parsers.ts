@@ -34,6 +34,8 @@ export async function fetchAndParse({ kind, url, form }: ParseArgs): Promise<any
   if (form) headers["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8";
   const r = await fetch(url, {
     credentials: "include",
+    redirect: "error",
+    signal: AbortSignal.timeout(45_000),
     headers,
     method: form ? "POST" : "GET",
     body: form ? new URLSearchParams(form).toString() : undefined,
@@ -321,6 +323,8 @@ export async function submitRequest(a: SubmitArgs): Promise<{ status: number; ur
     headers["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8";
     body = new URLSearchParams(a.fields).toString();
   }
-  const r = await fetch(a.url, { method: a.method || "POST", credentials: "include", headers, body });
+  const u = new URL(a.url);
+  if (u.protocol !== "https:" || u.username || u.password || u.port || !["www.nexusmods.com", "forums.nexusmods.com"].includes(u.hostname)) throw new Error("Unsafe form action");
+  const r = await fetch(a.url, { redirect: "error", signal: AbortSignal.timeout(45_000), method: a.method || "POST", credentials: "include", headers, body });
   return { status: r.status, url: r.url, contentType: r.headers.get("content-type") || "", body: await r.text() };
 }

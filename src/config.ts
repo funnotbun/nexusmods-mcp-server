@@ -24,12 +24,16 @@ export interface Config {
   uploadDir: string; // optional — if set, confines upload_file_version reads to this directory
   authDir: string;
   cookiesPath: string;
+  readOnly: boolean;
+  allowDownloads: boolean;
 }
 
 export function loadConfig(): Config {
   const authDir = path.resolve(__dirname, "..", ".auth");
   return {
     apiKey: process.env.NEXUS_API_KEY || "",
+    readOnly: process.env.NEXUS_READ_ONLY === "1",
+    allowDownloads: process.env.NEXUS_ALLOW_DOWNLOADS !== "0",
     downloadDir: process.env.NEXUS_DOWNLOAD_DIR || "",
     uploadDir: process.env.NEXUS_UPLOAD_DIR || "",
     authDir,

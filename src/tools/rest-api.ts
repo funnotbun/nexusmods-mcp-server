@@ -1,10 +1,9 @@
+import { safeDownload } from "../clients/safe-download.js";
 // Copyright (c) 2026 Morgott
 // Licensed under CC BY-NC 4.0 — see LICENSE.
 
-import { createWriteStream, mkdirSync, existsSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import path from "node:path";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import type { Config } from "../config.js";
@@ -260,15 +259,9 @@ export function registerRestApiTools(server: McpServer, api: NexusApiClient, con
       try {
         const links: any[] = await api.v1("GET", linkPath(g, mod_id, file_id, key, expires));
         if (!links.length) return error("download_file: no download links returned");
-        const uri: string = links[0].URI;
-        const name = decodeURIComponent(path.basename(new URL(uri).pathname)) || `${mod_id}-${file_id}`;
+        const metadata = await api.v1("GET", `/games/${g}/mods/${mod_id}/files/${file_id}`);
         mkdirSync(dir, { recursive: true });
-        const target = path.join(dir, name);
-        if (existsSync(target)) return success(`Already exists: ${target}`);
-        const res = await fetch(uri);
-        if (!res.ok || !res.body) return error(`download_file: CDN HTTP ${res.status}`);
-        await pipeline(Readable.fromWeb(res.body as any), createWriteStream(target));
-        return success(`Downloaded ${name} (${fmtSize(Number(res.headers.get("content-length")))}) via ${links[0].short_name} → ${target}`);
+        return success(await safeDownload({downloadDir:dir, allowDownloads:config.allowDownloads}, links[0].URI, metadata));
       } catch (e) {
         return error(`download_file: ${explainDownload(e)}`);
       }

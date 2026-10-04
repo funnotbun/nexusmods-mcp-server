@@ -1,3 +1,5 @@
+import { assertQuery } from "../utils/graphql.js";
+import { siteUrl } from "../utils/helpers.js";
 // Copyright (c) 2026 Morgott
 // Licensed under CC BY-NC 4.0 — see LICENSE.
 
@@ -475,14 +477,18 @@ export class WebClient {
   // ── Site operations ────────────────────────────────────────────
 
   async parse(kind: ParseKind, url: string, form?: Record<string, string>): Promise<any> {
+    url = siteUrl(url);
     const out = await this.browser.evaluate(originOf(url), fetchAndParse, { kind, url, form });
     if (out?.error) throw new Error(out.error);
+    if (out?.action) out.action = siteUrl(out.action, url);
     return out;
   }
 
   /** Send a request from inside the site page (form, multipart upload or JSON), as the
    *  site's own scripts do. Never throws on HTTP status. */
   async submit(args: SubmitArgs): Promise<{ status: number; url: string; contentType: string; body: string }> {
+    if (this.config.readOnly) throw new Error("NEXUS_READ_ONLY blocks account writes");
+    args = { ...args, url: siteUrl(args.url) };
     return this.browser.evaluate(originOf(args.url), submitRequest, args);
   }
 
@@ -507,6 +513,7 @@ export class WebClient {
 
   /** POST/PUT a jQuery-style form to www.nexusmods.com (same-origin XHR, as the site does). */
   async postForm(pathname: string, method: "POST" | "PUT", fields: Record<string, string | number>): Promise<{ status: number; body: string; contentType: string }> {
+    if (this.config.readOnly) throw new Error("NEXUS_READ_ONLY blocks account writes");
     const body = new URLSearchParams(Object.entries(fields).map(([k, v]) => [k, String(v)])).toString();
     return this.browser.fetch(`${WWW_ORIGIN}${pathname}`, {
       method,
@@ -522,6 +529,7 @@ export class WebClient {
   /** GraphQL through the api-router with the browser session, mirroring the site's
    *  client (credentials: include + X-GraphQL-OperationName header). */
   async sessionGraphql<T = any>(operationName: string, query: string, variables: Record<string, unknown>): Promise<T> {
+    if (this.config.readOnly) assertQuery(query);
     const res = await this.browser.fetch(API_ROUTER, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-GraphQL-OperationName": operationName },
