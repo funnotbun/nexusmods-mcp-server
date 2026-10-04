@@ -2,6 +2,8 @@
 // Licensed under CC BY-NC 4.0 — see LICENSE.
 
 import { APP_NAME, PKG_VERSION } from "../config.js";
+import { assertQuery } from "../utils/graphql.js";
+import { redact, registerSecret } from "../utils/secrets.js";
 
 const V1_BASE = "https://api.nexusmods.com/v1";
 const V2_GRAPHQL = "https://api.nexusmods.com/v2/graphql";
@@ -19,7 +21,7 @@ export class NexusApiError extends Error {
     message: string,
     public status: number,
   ) {
-    super(message);
+    super(redact(message));
   }
 }
 
@@ -28,7 +30,7 @@ export class NexusApiError extends Error {
 export class NexusApiClient {
   readonly rateLimit: RateLimit = {};
 
-  constructor(private apiKey: string) {}
+  constructor(private apiKey: string, private readOnly = process.env.NEXUS_READ_ONLY === "1") { registerSecret(apiKey); }
 
   hasKey(): boolean {
     return !!this.apiKey;
@@ -76,11 +78,16 @@ export class NexusApiClient {
   }
 
   private async send(url: string, init: RequestInit): Promise<Response> {
+    init = { ...init, redirect: "error", signal: AbortSignal.timeout(Number(process.env.NEXUS_API_TIMEOUT_MS) || 90_000) };
     let res = await fetch(url, init);
     this.readRateLimit(res);
     // Reads (GET, GraphQL queries) back off once on 429/503: Retry-After (≤ 30 s) else 2 s.
     // Writes are never retried.
-    const isRead = (init.method ?? "GET") === "GET" || (url === V2_GRAPHQL && !/^\s*mutation\b/.test(String(init.body ?? "").replace(/^\{"query":"/, "")));
+    let isRead = (init.method ?? "GET") === "GET";
+    if (url === V2_GRAPHQL) {
+      try { assertQuery(JSON.parse(String(init.body)).query); isRead = true; }
+      catch { isRead = false; }
+    }
     if ((res.status === 429 || res.status === 503) && isRead) {
       const wait = Math.min(Number(res.headers.get("retry-after")) || 2, 30) * 1000;
       await res.body?.cancel().catch(() => undefined);
@@ -115,6 +122,7 @@ export class NexusApiClient {
   // ── v1 REST ────────────────────────────────────────────────────
 
   async v1<T = any>(method: "GET" | "POST" | "DELETE", pathAndQuery: string, body?: unknown): Promise<T> {
+    if (this.readOnly && method !== "GET") throw new Error("NEXUS_READ_ONLY blocks account writes");
     this.requireKey();
     const res = await this.send(`${V1_BASE}${pathAndQuery}`, {
       method,
@@ -128,6 +136,7 @@ export class NexusApiClient {
   // ── v2 GraphQL (read queries work without a key) ────────────────
 
   async graphql<T = any>(query: string, variables?: Record<string, unknown>): Promise<T> {
+    if (this.readOnly) assertQuery(query);
     const res = await this.send(V2_GRAPHQL, {
       method: "POST",
       headers: this.headers({ "Content-Type": "application/json" }),
@@ -147,6 +156,7 @@ export class NexusApiClient {
   // ── v3 REST (uploads, mod files) ───────────────────────────────
 
   async v3<T = any>(method: "GET" | "POST" | "PATCH", pathAndQuery: string, body?: unknown): Promise<T> {
+    if (this.readOnly && method !== "GET") throw new Error("NEXUS_READ_ONLY blocks account writes");
     this.requireKey();
     const res = await this.send(`${V3_BASE}${pathAndQuery}`, {
       method,

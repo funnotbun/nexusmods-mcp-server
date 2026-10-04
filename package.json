@@ -10,7 +10,8 @@
   "files": [
     "build",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "launch.mjs"
   ],
   "scripts": {
     "build": "tsc",

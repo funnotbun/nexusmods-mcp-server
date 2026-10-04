@@ -106,3 +106,13 @@ Don't use this server for bulk scraping.
 ## License
 
 CC BY-NC 4.0 — Copyright (c) 2026 Morgott. See [LICENSE](LICENSE).
+
+## Optional safeguards
+
+Set `NEXUS_READ_ONLY=1` to omit account-write tools and reject account mutations.
+Set `NEXUS_ALLOW_DOWNLOADS=0` to omit download tools. Defaults preserve existing capabilities,
+including browser cookie extraction, default-browser login, manual cookie import, and interactive setup.
+
+API archive transfers use exclusive partial files, verify exact byte counts and available MD5 checksums,
+validate CDN redirects, and keep files inside the selected download directory.
+`NEXUS_MAX_DOWNLOAD_BYTES`, `NEXUS_DOWNLOAD_TIMEOUT_MS`, and `NEXUS_CDN_HOSTS` configure transfer limits.

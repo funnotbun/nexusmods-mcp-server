@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Morgott
 // Licensed under CC BY-NC 4.0 — see LICENSE.
 
+import { redact } from "./secrets.js";
+
 export interface ToolResult {
   [key: string]: unknown;
   content: Array<{ type: "text"; text: string }>;
@@ -15,13 +17,13 @@ export interface CookieEntry {
 }
 
 export function success(text: string): ToolResult {
-  return { content: [{ type: "text", text }] };
+  return { content: [{ type: "text", text: redact(text) }] };
 }
 
 export function error(text: string): ToolResult {
-  return { content: [{ type: "text", text: `Error: ${text}` }], isError: true };
+  return { content: [{ type: "text", text: `Error: ${redact(text)}` }], isError: true };
 }
 
 export function errMsg(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
+  return redact(e);
 }

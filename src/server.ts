@@ -1,8 +1,9 @@
+import { capabilityServer } from "./utils/capabilities.js";
 // Copyright (c) 2026 Morgott
 // Licensed under CC BY-NC 4.0 — see LICENSE.
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { loadConfig, PKG_VERSION } from "./config.js";
+import { loadConfig, PKG_VERSION, type Config } from "./config.js";
 import { NexusApiClient } from "./clients/nexus-api.js";
 import { WebClient } from "./clients/web-client.js";
 import { registerRestApiTools } from "./tools/rest-api.js";
@@ -15,6 +16,7 @@ import { registerWebModTools } from "./tools/web-mod.js";
 function buildInstructions(hasKey: boolean): string {
   return [
     "Nexus Mods tools (any game).",
+    "Optional NEXUS_READ_ONLY=1 omits account-write tools; NEXUS_ALLOW_DOWNLOADS=0 omits downloads. Otherwise the upstream tools and login methods remain available.",
     'IDs: game = domain name from site URLs ("skyrimspecialedition", "fallout4", "stardewvalley"; find with list_games). mod_id = number in /<game>/mods/<id>. file_id from get_mod_files.',
     `API key: ${hasKey ? "configured" : "NOT configured — v1 (get_mod, get_mod_files, downloads, tracking, endorse) and v3 upload tools will fail until NEXUS_API_KEY is set (npm run setup)"}. GraphQL tools (search_mods, list_games, get_mod_details, collections, get_user, get_news, graphql_query) work without a key.`,
     "Rate limits (v1/v3, per API key): hourly + daily quotas (daily 20,000); remaining budget is shown by validate_user and in API errors. Avoid bulk loops.",
@@ -30,25 +32,25 @@ function buildInstructions(hasKey: boolean): string {
   ].join("\n");
 }
 
-export async function createServer(): Promise<{ server: McpServer; webClient: WebClient }> {
-  const config = loadConfig();
-  const api = new NexusApiClient(config.apiKey);
+export async function createServer(config: Config = loadConfig()): Promise<{ server: McpServer; webClient: WebClient }> {
+  const api = new NexusApiClient(config.apiKey, config.readOnly);
 
   const server = new McpServer(
     { name: "nexusmods-mcp-server", version: PKG_VERSION },
     { instructions: buildInstructions(api.hasKey()) },
   );
 
-  registerRestApiTools(server, api, config);
-  registerGraphqlTools(server, api);
-  registerUploadTools(server, api, config);
+  const allowed = capabilityServer(server, config);
+  registerRestApiTools(allowed, api, config);
+  registerGraphqlTools(allowed, api);
+  registerUploadTools(allowed, api, config);
 
   // init() is non-blocking: on-disk cookies load instantly; auto-extraction runs in the
   // background so the MCP initialize handshake is never delayed.
   const webClient = new WebClient(config);
   webClient.init();
-  registerWebTools(server, webClient, api);
-  registerWebModTools(server, webClient, api);
+  registerWebTools(allowed, webClient, api);
+  registerWebModTools(allowed, webClient, api);
 
   console.error(
     `[nexusmods-mcp] ready (api key: ${api.hasKey() ? "yes" : "no"}, web cookies: ${webClient.hasCookies() ? "loaded" : "none"})`,

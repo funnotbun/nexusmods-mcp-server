@@ -3,6 +3,7 @@
 
 import { existsSync, accessSync, constants } from "node:fs";
 import path from "node:path";
+import { lstat, realpath, mkdir } from "node:fs/promises";
 
 export function truncate(text: string, maxLen = 20000): string {
   if (text.length <= maxLen) return text;
@@ -61,6 +62,72 @@ export function fmtSize(bytes: number | null | undefined): string {
 export function isWithinDir(dir: string, target: string): boolean {
   const rel = path.relative(path.resolve(dir), path.resolve(target));
   return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+const RESERVED = /^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i;
+function decodedComponent(input: string): string {
+  let value = input;
+  for (let i = 0; i < 5 && value.includes("%"); i++) {
+    try { value = decodeURIComponent(value); } catch { throw new Error("Invalid path encoding"); }
+  }
+  if (!value || /[%/\\:\x00-\x1f]/.test(value) || value === "." || value === ".." || RESERVED.test(value)) {
+    throw new Error("Unsafe path component");
+  }
+  return value;
+}
+
+export function sanitizeFileName(input: string): string {
+  const value = decodedComponent(input).replace(/[<>"|?*]/g, "_").replace(/[. ]+$/, "");
+  if (!value || value.length > 180 || RESERVED.test(value)) throw new Error("Unsafe filename");
+  return value;
+}
+
+/** Reject symlinks/junctions in every existing component, including the root. */
+export async function assertRealPath(target: string): Promise<void> {
+  const resolved = path.resolve(target);
+  const root = path.parse(resolved).root;
+  let current = root;
+  for (const part of resolved.slice(root.length).split(path.sep).filter(Boolean)) {
+    current = path.join(current, part);
+    const st = await lstat(current);
+    if (st.isSymbolicLink()) throw new Error("Symlinks and junctions are not allowed");
+  }
+  const real = await realpath(resolved);
+  if (path.relative(real, resolved) !== "") throw new Error("Path resolves through a reparse point");
+}
+
+function absoluteRoot(root: string): void {
+  if (!root || !path.isAbsolute(root) || /^[\\/]{2}/.test(root) || root.includes("%")) throw new Error("An absolute local directory is required");
+  for (const part of root.slice(path.parse(root).root.length).split(/[\\/]/).filter(Boolean)) {
+    if (decodedComponent(part) !== part || /[<>"|?*]/.test(part) || /[. ]$/.test(part)) throw new Error("Unsafe directory");
+  }
+}
+
+export async function downloadDirectory(root: string, subdir = ""): Promise<string> {
+  absoluteRoot(root);
+  // The configured root must exist: do not create arbitrary directories from tool input.
+  await assertRealPath(root);
+  const realRoot = await realpath(root);
+  if (path.isAbsolute(subdir) || /^[\\/]/.test(subdir) || subdir.includes("%")) throw new Error("dest_subdir must be a safe relative path");
+  let dir = realRoot;
+  for (const part of subdir.split(/[\\/]/).filter(Boolean)) {
+    if (decodedComponent(part) !== part || /[<>"|?*]/.test(part) || /[. ]$/.test(part)) throw new Error("Unsafe destination directory");
+    dir = path.join(dir, part);
+    if (!isWithinDir(realRoot, dir)) throw new Error("Destination outside NEXUS_DOWNLOAD_DIR");
+    try { await lstat(dir); } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+      await mkdir(dir); // One checked component at a time.
+    }
+    await assertRealPath(dir);
+  }
+  return dir;
+}
+
+export function siteUrl(input: string, base?: string): string {
+  const url = new URL(input, base);
+  if (url.protocol !== "https:" || url.username || url.password || url.port ||
+      !["forums.nexusmods.com", "www.nexusmods.com"].includes(url.hostname)) throw new Error("Only HTTPS Nexus site/forum URLs are allowed");
+  return url.href;
 }
 
 export function detectChromeExecutable(): string | null {

@@ -10,6 +10,7 @@
 import { z } from "zod/v4";
 import type { ToolResult } from "./types.js";
 import { errMsg } from "./types.js";
+import { redact } from "./secrets.js";
 
 export const formatArg = z
   .enum(["text", "json"])
@@ -57,7 +58,8 @@ export function errorCode(e: unknown): ErrorCode {
 }
 
 export function jsonResult(data: Record<string, unknown>): ToolResult {
-  return { content: [{ type: "text", text: JSON.stringify(data) }], structuredContent: data };
+  const text = redact(JSON.stringify(data));
+  return { content: [{ type: "text", text }], structuredContent: JSON.parse(text) };
 }
 
 export function jsonError(tool: string, e: unknown): ToolResult {
