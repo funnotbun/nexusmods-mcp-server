@@ -98,9 +98,9 @@ export class DownloadBrowser {
   private clearOnLaunch = false;
   constructor(private config: BrowserDownloadOptions) {}
 
-  setCookies(cookies: CookieEntry[]): void {
+  async setCookies(cookies: CookieEntry[]): Promise<void> {
     this.cookies = cookies.filter(c => NEXUS_COOKIE_DOMAIN.test(c.domain));
-    this.context?.addCookies(this.cookies).catch(() => {});
+    if (this.context) await this.context.addCookies(this.cookies);
   }
   async clearSiteCookies(): Promise<void> {
     this.cookies = [];
