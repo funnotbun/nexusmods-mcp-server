@@ -106,3 +106,20 @@ Don't use this server for bulk scraping.
 ## License
 
 CC BY-NC 4.0 — Copyright (c) 2026 Morgott. See [LICENSE](LICENSE).
+
+## Browser downloads
+
+Call `get_mod_files` to select a file, then `download_mod_file(game, mod_id, file_id, dest_subdir?)`
+or `download_mod_files(files)`. The downloader opens a visible dedicated browser, clicks the site's
+ordinary Slow download control, and captures the generated URL for an independent streamed transfer.
+Existing cookie extraction, default-browser login, manual cookie import, and setup remain available.
+
+Configure an existing absolute `NEXUS_DOWNLOAD_DIR`. `NEXUS_BROWSER_CHANNEL` selects
+`chromium` (default), `chrome`, or `msedge`. Login and site verification remain manual.
+`NEXUS_HUMAN_TIMEOUT_MS` defaults to 300000; `NEXUS_DOWNLOAD_DELAY_MS` to 3000;
+`NEXUS_DOWNLOAD_BATCH_LIMIT` to 25. Set `NEXUS_ALLOW_DOWNLOADS=0` to disable the new tools.
+
+Navigation starts automation at commit. One browser task checks the page and clicks controls inside
+open shadow roots; enabled controls can be retried while handlers mount. CDN response filenames
+are honoured even when the URL uses an opaque object ID. No preliminary account or metadata lookup
+is needed. Transfers verify CDN byte counts and supplied checksums, using bounded memory.

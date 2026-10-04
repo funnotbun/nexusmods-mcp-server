@@ -1,3 +1,4 @@
+import { registerDownloadTools } from "./tools/downloads.js";
 // Copyright (c) 2026 Morgott
 // Licensed under CC BY-NC 4.0 — see LICENSE.
 
@@ -19,6 +20,7 @@ function buildInstructions(hasKey: boolean): string {
     `API key: ${hasKey ? "configured" : "NOT configured — v1 (get_mod, get_mod_files, downloads, tracking, endorse) and v3 upload tools will fail until NEXUS_API_KEY is set (npm run setup)"}. GraphQL tools (search_mods, list_games, get_mod_details, collections, get_user, get_news, graphql_query) work without a key.`,
     "Rate limits (v1/v3, per API key): hourly + daily quotas (daily 20,000); remaining budget is shown by validate_user and in API errors. Avoid bulk loops.",
     "Discover: search_mods(query, game) → get_mod_details (description, requirements, uid) or get_mod (v1) → get_mod_files → get_download_link / download_file(dest_dir).",
+    "Browser downloads: download_mod_file(game, mod_id, file_id, dest_subdir?) and download_mod_files(files) open a visible dedicated window, click the ordinary Slow download control, capture the site-generated URL, then stream the archive. Login and verification require the human. This path avoids preliminary API requests. Downloads are serial; configure NEXUS_DOWNLOAD_DIR, NEXUS_BROWSER_CHANNEL, NEXUS_HUMAN_TIMEOUT_MS, NEXUS_DOWNLOAD_DELAY_MS and NEXUS_DOWNLOAD_BATCH_LIMIT.",
     "Downloads: premium accounts download directly; non-premium need key + expires from the site's nxm:// link (Files tab → Mod Manager Download).",
     "Upload a new version of an existing mod file: 1) get_upload_targets(game, mod_id) → mod uid + mod_file ids; 2) upload_file_version(mod_file_id, file_path, version, changelog?, mod_uid?). Publishes immediately. If publish fails after upload, retry with upload_id. New mod pages and first files must be created on the website.",
     "Mod comments (Posts tab): get_mod_comments(game, mod_id, page) → post_mod_comment(text, parent_id?) / edit_mod_comment(comment_id). Collection comments: get_collection → get_collection_comments(comment_thread_id) → post/edit/delete_collection_comment.",
@@ -49,6 +51,7 @@ export async function createServer(): Promise<{ server: McpServer; webClient: We
   webClient.init();
   registerWebTools(server, webClient, api);
   registerWebModTools(server, webClient, api);
+  registerDownloadTools(server, api, webClient, config);
 
   console.error(
     `[nexusmods-mcp] ready (api key: ${api.hasKey() ? "yes" : "no"}, web cookies: ${webClient.hasCookies() ? "loaded" : "none"})`,
